@@ -96,42 +96,41 @@ We will attempt to use an ensemble method, namely a random forest:
 train <- train %>% select(-user_name)
 test <- test %>% select(-user_name)
 
-control <- trainControl(method="cv", number=10, classProbs = TRUE)
+control <- trainControl(method="cv", number=5)
 
 modelFit <- train(classe ~., 
                   method = "rf", 
                   trControl = control, 
                   data=train,
-                  prox=TRUE,
                   allowParallels=TRUE)
 ```
 
 Now that we have our model, let's see how well it did within the training set w/ cross-validation:
 
-```{r, echo=FALSE}
+```{r, echo=FALSE, cache=TRUE}
 print(modelFit$finalModel)
 ```
 
-The model has an out of bag error of ***********2.24********** %. Since we are using a random forest, the out of sample error estimate is provided by the 'out of bag estimate of error rate' provided by the model.
+The model has an out of bag error of 1.94%. Since we are using a random forest, the out of sample error estimate is provided by the 'out of bag estimate of error rate' provided by the model.
 
 If we look at the class error rate, the highest one we have is approximately 3%, so that's pretty good!
 
 Let's try to predict the outcome on our test set
 
-```{r}
-predictions <- predict(model, test)
-resultsMatrix <- confusionMatrix(results, test$classe)
+```{r, cache=TRUE}
+predictions <- predict(modelFit, test)
+resultsMatrix <- confusionMatrix(predictions, test$classe)
 ```
 
 We will now examine the confusion matrix:
 
-```{r, echo=FALSE}
+```{r, echo=FALSE, cache=TRUE}
 print(resultsMatrix)
 ```
 
 As you can see, the majority of the classes are classified correctly, with only the a handle of observations being mis-classified.
 
-The overall accuracy of this model as tested on the testing set is an impressive 97.9%!
+The overall accuracy of this model as tested on the testing set is an impressive 98.4%!
 
 ## Conclusion
 By using a Random Forest model, we were able to come up with a model that can accurately identifiy whether or not an individual is performing an excercise correctly.
