@@ -1,0 +1,137 @@
+---
+title: "Predicting How Well An Individual Performs an Exercise Using Jawbone"
+author: "Connor M"
+date: "May 24, 2015"
+output: html_document
+---
+
+## Introduction
+It will be the purpose of this paper to predict "how well" an individual performs a particular exercise based on a variety of features provided by a Jawbone device worn by the individual.
+
+## Dataset Description
+From the researcher's [description of the dataset](http://groupware.les.inf.puc-rio.br/har#dataset)
+
+> Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the
+dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).
+
+> Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes. Participants were supervised by an experienced weight lifter to make sure the execution complied to the manner they were supposed to simulate. The exercises were performed by six male participants aged between 20-28 years, with little weight lifting experience. We made sure that all participants could easily simulate the mistakes in a safe and controlled manner by using a relatively light dumbbell (1.25kg).
+
+## Exploratory Analysis
+We will first begin by looking at the different predictors available to us in the dataset.
+
+If you were to look at the different predictors available, you will notice that some of the are just combinations of other predictors. For example, the ```max_roll_belt``` is a summary statistic, calculated based on a window of time (time slice). We will ignore these statistics based on a time slice for now. If we need them later, we can always re-create it. If we ignore all of summary statistic predictors we are left with the following 30 variables:
+
+```{r, message=FALSE}
+library(dplyr)
+
+jawbone_data <- read.csv('data/pml-training.csv')
+jawbone_data <- jawbone_data %>% select(roll_belt, pitch_belt, yaw_belt, total_accel_belt, 
+                                        gyros_belt_x, gyros_belt_y, gyros_belt_z, 
+                                        accel_belt_x, accel_belt_y, accel_belt_z, 
+                                        magnet_belt_x, magnet_belt_y, magnet_belt_z, 
+                                        roll_arm, pitch_arm, yaw_arm, total_accel_arm, 
+                                        gyros_arm_x, gyros_arm_y, gyros_arm_z, 
+                                        accel_arm_x, accel_arm_y, accel_arm_z, 
+                                        magnet_arm_x, magnet_arm_y, magnet_arm_z, 
+                                        roll_dumbbell, pitch_dumbbell, yaw_dumbbell, 
+                                        user_name, classe)
+
+str(jawbone_data)
+```
+
+All the different predictors we have, excluding the ```user_name``` feature, we have all numeric predictors.
+
+We should now build our training and test sets from the provided data:
+
+```{r}
+library(caret)
+
+set.seed(42991)
+
+trainIndex <- createDataPartition(jawbone_data$classe, 
+                                  p = 0.7, 
+                                  list = FALSE)
+
+train <- jawbone_data[trainIndex,]
+test <- jawbone_data[-trainIndex,]
+```
+
+Let's see if we can try to visualize the clustering of the different classes and see if we can discern any patterns. Since we can't really visualize 29-dimensional space, we will try to reduce this space to 2 dimensions, while trying to maintain local distance information.
+
+A simple way of performing this transformation is using principal component analysis on the dataset. If we extract the 2 most important principle components, we can use this two visualize this high dimensional dataset. It won't be a perfect representation of the data, but it may help us build some intuition.
+
+```{r}
+library(ggplot2)
+
+# Ignore the 'classe' variable
+pcaTransform <- preProcess(train[,c(1:29)], 
+                     method = c("center", "scale", "pca"), 
+                     pcaComp =  2)
+
+pc <- predict(pcaTransform, train[,c(1:29)])
+pc$class <- train$classe
+
+ggplot(pc, aes(x = PC1, y = PC2, color = class)) + geom_point()
+```
+
+Based on this plot, it's hard to discern a clear pattern between the different classes. However, there appears to be around 5-6 clusters and 6 users, so maybe these clusters we are seeing corresponds to the different users:
+
+```{r}
+pc$user <- train$user_name
+
+ggplot(pc, aes(x = PC1, y = PC2, color = user)) + geom_point()
+```
+
+There appears to be a very clear separation between the users: adelmo, charles, and predro. However, carlitos, eurico, and jeremy are overlapping. Even still, each user's entries are closely clustered together.
+
+This information, however, may not be helpful in predicting future users though. It may be useful for predicting for current users, but no such assumption has been made for this study.
+
+## Model Creation
+Since we are dealing with a classification problem, we can narrow down our model algorithm choices. The most common ones for classification problems are multi-class logistic regression models, neural networks, decision trees, multi-class SVMs, or random forests.
+
+We will attempt to use an ensemble method, namely a random forest:
+
+```{r, cache=TRUE}
+# Ignore the user_name feature since we want our model to be as flexible as possible.
+train <- train %>% select(-user_name)
+test <- test %>% select(-user_name)
+
+control <- trainControl(method="cv", number=10, classProbs = TRUE)
+
+modelFit <- train(classe ~., 
+                  method = "rf", 
+                  trControl = control, 
+                  data=train,
+                  prox=TRUE,
+                  allowParallels=TRUE)
+```
+
+Now that we have our model, let's see how well it did within the training set w/ cross-validation:
+
+```{r, echo=FALSE}
+print(modelFit$finalModel)
+```
+
+The model has an out of bag error of ***********2.24********** %. Since we are using a random forest, the out of sample error estimate is provided by the 'out of bag estimate of error rate' provided by the model.
+
+If we look at the class error rate, the highest one we have is approximately 3%, so that's pretty good!
+
+Let's try to predict the outcome on our test set
+
+```{r}
+predictions <- predict(model, test)
+resultsMatrix <- confusionMatrix(results, test$classe)
+```
+
+We will now examine the confusion matrix:
+
+```{r, echo=FALSE}
+print(resultsMatrix)
+```
+
+As you can see, the majority of the classes are classified correctly, with only the a handle of observations being mis-classified.
+
+The overall accuracy of this model as tested on the testing set is an impressive 97.9%!
+
+## Conclusion
+By using a Random Forest model, we were able to come up with a model that can accurately identifiy whether or not an individual is performing an excercise correctly.
